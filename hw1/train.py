@@ -4,12 +4,10 @@ import keras
 from sklearn import preprocessing
 from sklearn.model_selection import train_test_split
 from keras.utils.np_utils import to_categorical
-from keras.layers import TimeDistributed, Bidirectional
-from keras.models import Sequential
+from keras.layers import TimeDistributed, Bidirectional, Dense,Dropout, GRU
+from keras.models import Sequential, load_model
 from keras.layers.core import Dense, Dropout, Activation
-from keras.models import Sequential
-from keras.layers import Dense,Dropout
-from keras.layers import GRU
+
 MAX_SEQUENCE_NUM = 777
 
 
@@ -116,7 +114,10 @@ def trainModel(model, X_train, X_valid, y_train, y_valid):
     model.save('model2.h5') 
     scores = model.evaluate(X_valid, y_valid, verbose=0)
     print(scores)
-   
+
+# def loadModel(path):
+#     model = load_model(path)
+#     pass
 
 X_data, y_data, df = loadData()
 input_shape = (X_data.shape[1], X_data.shape[2])
@@ -124,6 +125,8 @@ tsize = 0.1
 rnState = 0
 X_train, X_valid, y_train, y_valid = train_test_split(X_data, y_data, test_size= tsize, random_state=rnState)
 
+
+# model = load_model('models/model2.h5')
 model = genModel(input_shape)
 trainModel(model, X_train, X_valid, y_train, y_valid )
 
