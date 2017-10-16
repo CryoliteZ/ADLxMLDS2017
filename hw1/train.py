@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import keras
+import itertools
 from sklearn import preprocessing
 from sklearn.model_selection import train_test_split
 from keras.utils.np_utils import to_categorical
@@ -8,10 +9,13 @@ from keras.layers import TimeDistributed, Bidirectional, Dense,Dropout, GRU
 from keras.models import Sequential, load_model
 from keras.layers.core import Dense, Dropout, Activation
 
+
+
 MAX_SEQUENCE_NUM = 777
 
 
 def mapPhones():
+    labelList = []
     phone2num = dict()
     with open('./48phone_char.map') as f:
         lines = f.readlines()
@@ -19,7 +23,9 @@ def mapPhones():
             line = line.rstrip('\n')           
             phones = line.split('\t')
             phone2num[phones[0]] = phones[1]
+            labelList.append(phones[2])
     phone39 = dict()
+    
     with open('./48_39.map') as f:
         
         lines = f.readlines()
@@ -27,19 +33,19 @@ def mapPhones():
             line = line.rstrip('\n')
             phones = line.split('\t')
             phone39[phones[0]] = phones[1]
-    
-    labelList = []
+            
+    labelIdxList = []
     for key, value in phone39.items():
         label = phone2num[value]
-        if(label not in labelList):
-            labelList.append(label)
+        if(label not in labelIdxList):
+            labelIdxList.append(label)
    
     
-    return phone2num, phone39, labelList
+    return phone2num, phone39, labelIdxList, labelList
 
 
 def loadData(mfcc_path, labels_path):
-    phone2num, phone39, labelList  = mapPhones()
+    phone2num, phone39, labelIdxList, labelList  = mapPhones()
 
     # fbank_features = ['fb_' + str(i) for i in range(0,69predict_classes)]
     mfcc_features = ['mfcc_' + str(i) for i in range(0,39)]
@@ -50,7 +56,7 @@ def loadData(mfcc_path, labels_path):
     df = pd.concat([mfcc_data, labels], axis=1)  
     # map label frome phone48 -> phone39 -> number -> index of number in labelList -> +1
     for key, value in phone39.items():        
-        df.loc[df['label'] == key, 'label'] = labelList.index(phone2num[value]) + 1
+        df.loc[df['label'] == key, 'label'] = labelIdxList.index(phone2num[value]) + 1
     
     df['f_id'] = df.index
     df['fid'] = df['f_id'].apply(lambda x: x.split('_')[2])
@@ -63,11 +69,9 @@ def loadData(mfcc_path, labels_path):
     df_g = np.array(list(df_g))
     
     df_g = np.delete(df_g, 0, 1)
-
     
     X_data = []
     y_data = []
-
     for rows in (df_g):
         labels =  rows[0].as_matrix(['label'])        
         labels = to_categorical(labels, num_classes = 40)      
@@ -87,22 +91,21 @@ def loadData(mfcc_path, labels_path):
     y_data = np.asarray(y_data)
     # print(X_data[0].shape)
     # print(y_data[0].shape)
-
     return X_data, y_data, df_g
    
 
 def genModel(input_shape):
     model = Sequential()
-    model.add(Bidirectional(GRU(200, return_sequences=True, activation='relu', dropout=0.4), input_shape=input_shape,))
-    model.add(Bidirectional(GRU(200, return_sequences=True, activation='relu', dropout=0.4)))
+    model.add(Bidirectional(GRU(220, return_sequences=True, activation='relu', dropout=0.4), input_shape=input_shape,))
+    model.add(Bidirectional(GRU(220, return_sequences=True, activation='relu', dropout=0.4)))
     model.add(TimeDistributed(Dense(1024, activation='relu')))
     model.add(Dropout(0.3))
-    model.add(TimeDistributed(Dense(512, activation='relu')))
+    model.add(TimeDistributed(Dense(1024, activation='relu')))
     model.add(Dropout(0.3))
     model.add(TimeDistributed(Dense(40, activation='softmax')))
     model.summary()
 
-    opt = keras.optimizers.adam(lr = 0.0001)
+    opt = keras.optimizers.adam(lr = 0.0005)
     model.compile(optimizer= opt,
                 loss='categorical_crossentropy',
                 metrics = ['accuracy']
@@ -123,91 +126,79 @@ def train():
 
 
     batchSize = 100
-    epoch = 50
-    model.fit(X_train, y_train, batch_size = batchSize,epochs = epoch)  
-    model.save('model2.h5') 
+    epoch = 75
+    model.fit(X_train, y_train, batch_size = batchSize,epochs = epoch) 
     scores = model.evaluate(X_valid, y_valid, verbose=0)
+    benchmark = str(scores[0])[:8]
+    model.save('model4.h5') 
+
+    model.save('model4_' + benchmark + ' .h5') 
     print(scores)
 
 def loadTestData(mfcc_path):
-    phone2num, phone39, labelList  = mapPhones()
+    phone2num, phone39, labelIdxList, labelList   = mapPhones()
 
-    # fbank_features = ['fb_' + str(i) for i in range(0,69predict_classes)]
     mfcc_features = ['mfcc_' + str(i) for i in range(0,39)]
-   
-
- 
-    # fbank_train = pd.read_csv('./fbank/train.ark', sep=' ', header = None, index_col=0, names = ['id'] + fbank_features)
-    df = pd.read_csv(mfcc_path, sep=' ', header = None,  names = ['id'] + mfcc_features)
-    # map label frome phone48 -> phone39 -> number -> index of number in labelList -> +1
-  
-  
-    
-    df['f_id'] = df.index
-    df['fid'] = df['f_id'].apply(lambda x: x.split('_')[2])
+    df = pd.read_csv('./mfcc/test.ark', sep=' ', header = None,  names = ['id'] + mfcc_features)
+    df['fid'] = df['id'].apply(lambda x: x.split('_')[2])
     df[['fid']]= df[['fid']].apply(pd.to_numeric)
-    df['f_name'] =  df['f_id'].apply(lambda x: x.split('_')[0] + '_' + x.split('_')[1])
-    del df['f_id']
+    df['f_name'] =  df['id'].apply(lambda x: x.split('_')[0] + '_' + x.split('_')[1])
 
-    df = df.sort_values(by=['f_name', 'fid'])
     df_g = df.groupby('f_name')
     df_g = np.array(list(df_g))
-    
-    df_g = np.delete(df_g, 0, 1)
-
-    
-    X_data = []
-    y_data = []
-
-    for rows in (df_g):
-        labels =  rows[0].as_matrix(['label'])        
-        labels = to_categorical(labels, num_classes = 40)      
+    df_list = np.delete(df_g, 0, 1)
+    X_test = []
+    X_test_lens = []  
+    for rows in (df_list):
         mfcc = rows[0].as_matrix(mfcc_features)    
         # mfcc = preprocessing.scale(mfcc)
         padding_num = MAX_SEQUENCE_NUM - mfcc.shape[0]
-        padding_zeros = np.zeros((padding_num, 39))
-        
-        padding_labels = np.zeros(padding_num)
-        padding_labels = to_categorical(padding_labels, num_classes = 40)
-        
-        mfcc = np.concatenate((mfcc, padding_zeros), axis = 0)
-        labels = np.concatenate((labels, padding_labels), axis = 0)
-        X_data.append(mfcc)
-        y_data.append(labels)
-    X_data = np.asarray(X_data)
-    y_data = np.asarray(y_data)
-    # print(X_data[0].shape)
-    # print(y_data[0].shape)
+        X_test_lens.append(mfcc.shape[0])
 
-    return X_data, y_data, df_g
-    else:
-        X_data = []
-        for rows in (df_g):
-            
-            mfcc = rows[0].as_matrix(mfcc_features)    
-            # mfcc = preprocessing.scale(mfcc)
-            padding_num = MAX_SEQUENCE_NUM - mfcc.shape[0]
-            padding_zeros = np.zeros((padding_num, 39))   
-            mfcc = np.concatenate((mfcc, padding_zeros), axis = 0)
-            X_data.append(mfcc)
-            return X_data, df 
+        padding_zeros = np.zeros((padding_num, 39))
+        mfcc = np.concatenate((mfcc, padding_zeros), axis = 0)
+        X_test.append(mfcc)
+    X_test = np.asarray(X_test)
+    print(df_g.shape)
+
+    return X_test, X_test_lens, labelIdxList, labelList
+
+def getFrameID():
+    data = pd.read_csv('sample.csv', sep=',', header = 0,  names = ['id', 'phone_sequence'] )
+    return data
+    # print(data)
 
 def testPredict():
-    X_data, df = loadData('./mfcc/test.ark', None)
-    print(X_data)
-    print(df)
+    X_test, X_test_lens, labelIdxList, labelList = loadTestData('./mfcc/test.ark')
+    model = load_model('./models/model3.h5')
+    X_predict = []
+    result = model.predict_classes(X_test)
+    result.shape
+    for idx, seq in enumerate(result):
+        seq = seq[:X_test_lens[idx]]
+        X_predict.append(seq)
+    
+    X_predict = np.array(X_predict)
+    output = getFrameID()
 
-# def loadModel(path):
-#     model = load_model(path)
-#     pass
+    frames = []
+    for x in X_predict:
+        frame = ""
+        for labelIdx in x:
+            if(labelIdx > 0):
+                frame += labelList[int(labelIdxList[labelIdx-1])]
+        frame = ''.join(i for i, _ in itertools.groupby(frame))
+        frame = frame.strip('L')
+        frames.append(frame)
+    output['phone_sequence'] = frames
+    output.to_csv('result.csv', header=True, index=False, sep=',', mode='w', columns=['id','phone_sequence' ])
+    
+    print(output)
+   
 
 
-# train()
-testPredict()
-# model = load_model('models/model2.h5')
-
-# result = model.predict(X_valid)
-
+train()
+# testPredict()
 
 
 
