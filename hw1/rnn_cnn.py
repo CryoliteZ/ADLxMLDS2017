@@ -14,7 +14,7 @@ import sys,os,time, json
 
 
 MAX_SEQUENCE_NUM = 777
-path, dirs, files = os.walk("./models/").__next__()
+path, dirs, files = os.walk("./models_cnn/").__next__()
 MODEL_NUM = len(files)+1
 
 
@@ -92,11 +92,13 @@ def loadData(mfcc_path, labels_path):
 
 def genModel(input_shape):
     model = Sequential()
-    model.add(Bidirectional(GRU(512, return_sequences=True, activation='relu', dropout=0.4), input_shape=input_shape,))
+    
+    model.add(Conv1D(256,  39, input_shape=input_shape, padding = 'same', activation='relu'))
     model.add(Bidirectional(GRU(512, return_sequences=True, activation='relu', dropout=0.4)))
-    model.add(TimeDistributed(Dense(1024, activation='relu')))
+    model.add(Bidirectional(GRU(512, return_sequences=True, activation='relu', dropout=0.4)))
+    model.add(TimeDistributed(Dense(512, activation='relu')))
     model.add(Dropout(0.4))
-    model.add(TimeDistributed(Dense(1024, activation='relu')))
+    model.add(TimeDistributed(Dense(512, activation='relu')))
     model.add(Dropout(0.4))
 
     model.add(TimeDistributed(Dense(40, activation='softmax')))
@@ -119,7 +121,7 @@ def train():
         json_file.write(model_json)
 
     earlystopping = EarlyStopping(monitor='val_loss', patience = 30, verbose=1, mode='min')
-    checkpoint = ModelCheckpoint(filepath=  './models/model'+ str(MODEL_NUM) + 'best.h5',
+    checkpoint = ModelCheckpoint(filepath=  './models_cnn/model'+ str(MODEL_NUM) + 'best.h5',
                                 verbose=1,
                                 save_best_only=True,
                                 save_weights_only=False,
@@ -141,7 +143,7 @@ def train():
     scores = model.evaluate(X_valid, y_valid, verbose=0)
     benchmark = str(scores[0])[:8]
 
-    model.save('models/model'+ str(MODEL_NUM) +'_' + benchmark + '.h5') 
+    model.save('models_cnn/model'+ str(MODEL_NUM) +'_' + benchmark + '.h5') 
     print(scores)
 
 def loadTestData(mfcc_path):
