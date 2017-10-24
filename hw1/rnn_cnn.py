@@ -5,7 +5,7 @@ import itertools
 from sklearn import preprocessing
 from sklearn.model_selection import train_test_split
 from keras.utils.np_utils import to_categorical
-from keras.layers import TimeDistributed, Bidirectional, Dense,Dropout, GRU, Conv1D
+from keras.layers import TimeDistributed, Bidirectional, Dense,Dropout, GRU, Conv1D, Conv2D, MaxPooling2D, Flatten
 from keras.models import Sequential, load_model, model_from_json
 from keras.layers.core import Dense, Dropout, Activation
 from keras.callbacks import EarlyStopping, ModelCheckpoint
@@ -84,6 +84,7 @@ def loadData(mfcc_path, labels_path):
         X_data.append(mfcc)
         y_data.append(labels)
     X_data = np.asarray(X_data)
+    X_data = X = np.reshape(X_data, (len(X_data), 777, 39, 1))
     y_data = np.asarray(y_data)
     # print(X_data[0].shape)
     # print(y_data[0].shape)
@@ -91,27 +92,27 @@ def loadData(mfcc_path, labels_path):
    
 
 def genModel(input_shape):
+    # input_shape = ( 3xxx, 777, 39, 1)
     model = Sequential()
-    
-    model.add(Conv1D(256,  39, input_shape=input_shape, padding = 'same', activation='relu'))
-    model.add(Bidirectional(GRU(512, return_sequences=True, activation='relu', dropout=0.4)))
-    model.add(Bidirectional(GRU(512, return_sequences=True, activation='relu', dropout=0.4)))
+    model.add(TimeDistributed(Conv2D(128, (777,1), padding = 'same', activation='relu'), input_shape=input_shape))
+    model.add(TimeDistributed(MaxPooling2D(pool_size=(2,2))))
+    model.add(Bidirectional(GRU(200, return_sequences=True, activation='relu', dropout=0.4)))
+    model.add(Bidirectional(GRU(200, return_sequences=True, activation='relu', dropout=0.4)))
     model.add(TimeDistributed(Dense(512, activation='relu')))
     model.add(Dropout(0.4))
-    model.add(TimeDistributed(Dense(512, activation='relu')))
-    model.add(Dropout(0.4))
-
+    # model.add(TimeDistributed(Dense(512, activation='relu')))
+    # model.add(Dropout(0.4))
     model.add(TimeDistributed(Dense(40, activation='softmax')))
     model.summary()
-  
-    
     return model
 
 def train():
+    
     X_data, y_data, df = loadData('./mfcc/train.ark', './label/train.lab')
-    input_shape = (X_data.shape[1], X_data.shape[2])
+    input_shape = (X_data.shape[1], X_data.shape[2], 1)
+    input_shape = X_data.shape
     # test size and random seed
-    tsize = 0.08
+    tsize = 0.1
     rnState = 42
     X_train, X_valid, y_train, y_valid = train_test_split(X_data, y_data, test_size= tsize, random_state=rnState)
     model = genModel(input_shape)

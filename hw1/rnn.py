@@ -5,12 +5,12 @@ import itertools
 from sklearn import preprocessing
 from sklearn.model_selection import train_test_split
 from keras.utils.np_utils import to_categorical
-from keras.layers import TimeDistributed, Bidirectional, Dense,Dropout, GRU, Conv1D
+from keras.layers import TimeDistributed, Bidirectional, Dense,Dropout, GRU, Conv1D, LSTM
 from keras.models import Sequential, load_model, model_from_json
 from keras.layers.core import Dense, Dropout, Activation
 from keras.callbacks import EarlyStopping, ModelCheckpoint
 import sys,os,time, json
-
+import signal, os
 
 
 MAX_SEQUENCE_NUM = 777
@@ -94,10 +94,12 @@ def genModel(input_shape):
     model = Sequential()
     model.add(Bidirectional(GRU(512, return_sequences=True, activation='relu', dropout=0.4), input_shape=input_shape,))
     model.add(Bidirectional(GRU(512, return_sequences=True, activation='relu', dropout=0.4)))
-    model.add(TimeDistributed(Dense(1024, activation='relu')))
-    model.add(Dropout(0.4))
-    model.add(TimeDistributed(Dense(1024, activation='relu')))
-    model.add(Dropout(0.4))
+    model.add(Bidirectional(GRU(256, return_sequences=True, activation='relu', dropout=0.4)))
+    model.add(Bidirectional(GRU(256, return_sequences=True, activation='relu', dropout=0.4)))
+    # model.add(TimeDistributed(Dense(1024, activation='relu')))
+    # model.add(Dropout(0.4))
+    # model.add(TimeDistributed(Dense(1024, activation='relu')))
+    # model.add(Dropout(0.4))
 
     model.add(TimeDistributed(Dense(40, activation='softmax')))
     model.summary()
@@ -109,40 +111,54 @@ def train():
     X_data, y_data, df = loadData('./mfcc/train.ark', './label/train.lab')
     input_shape = (X_data.shape[1], X_data.shape[2])
     # test size and random seed
-    tsize = 0.08
+    tsize = 0.1
     rnState = 42
-    X_train, X_valid, y_train, y_valid = train_test_split(X_data, y_data, test_size= tsize, random_state=rnState)
+    # X_train, X_valid, y_train, y_valid = train_test_split(X_data, y_data, test_size= tsize, random_state=rnState)
+    X_train, X_valid, y_train, y_valid = train_test_split(X_data, y_data, test_size= tsize)
+    
     model = genModel(input_shape)
     
     model_json = model.to_json()
     with open('./models_checkpoint/model'+ str(MODEL_NUM) + '.json', "w") as json_file:
         json_file.write(model_json)
 
-    earlystopping = EarlyStopping(monitor='val_loss', patience = 30, verbose=1, mode='min')
-    checkpoint = ModelCheckpoint(filepath=  './models/model'+ str(MODEL_NUM) + 'best.h5',
+    earlystopping = EarlyStopping(monitor='val_loss', patience = 15, verbose=1, mode='min')
+    checkpoint = ModelCheckpoint(filepath=  './models/model'+ str(MODEL_NUM) + '_best.h5',
                                 verbose=1,
                                 save_best_only=True,
                                 save_weights_only=False,
                                 monitor='val_loss',
                                 mode='min')
-    opt = keras.optimizers.adam(lr = 0.0005)
+
+
+    opt = keras.optimizers.adam(lr = 0.001)
+
+
+
     model.compile(optimizer= opt,
                 loss='categorical_crossentropy',
                 metrics = ['accuracy']               
                 )
     batchSize = 40
     epoch = 100
-    model.fit(X_train, y_train,
+    try:
+        model.fit(X_train, y_train,
         validation_data=(X_valid, y_valid), 
         batch_size = batchSize,
         epochs = epoch,
         callbacks=[earlystopping,checkpoint]) 
-
-    scores = model.evaluate(X_valid, y_valid, verbose=0)
-    benchmark = str(scores[0])[:8]
-
-    model.save('models/model'+ str(MODEL_NUM) +'_' + benchmark + '.h5') 
-    print(scores)
+    except KeyboardInterrupt:
+        print("W: interrupt received, stopping…")
+    finally:
+        scores = model.evaluate(X_valid, y_valid, verbose=0)
+        benchmark = str(scores[0])[:8]    
+        model.save('models/rmodel'+ str(MODEL_NUM) +'_' + benchmark + '.h5') 
+        print(scores)
+        
+   
+   
+    
+    
 
 def loadTestData(mfcc_path):
     phone2num, phone39, labelIdxList, labelList   = mapPhones()
@@ -214,7 +230,7 @@ def test(path1):
             newFrame += frame[len(frame)-1]
         frames.append(newFrame)
     output['phone_sequence'] = frames
-    output.to_csv('result'+ str(MODEL_NUM)+'.csv', header=True, index=False, sep=',', mode='w', columns=['id','phone_sequence' ])
+    output.to_csv(path1+'_result.csv', header=True, index=False, sep=',', mode='w', columns=['id','phone_sequence' ])
     
     print(output)
    
