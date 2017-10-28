@@ -89,7 +89,6 @@ def loadData(data_dir, mfcc_path, labels_path):
 
 def genModel(input_shape):
     model = Sequential()
-    
     model.add(Conv1D(256,  30, input_shape=input_shape, padding = 'same', activation='relu'))
     model.add(Bidirectional(GRU(512, return_sequences=True, activation='relu', dropout=0.4)))
     model.add(Bidirectional(GRU(512, return_sequences=True, activation='relu', dropout=0.4)))
@@ -97,7 +96,6 @@ def genModel(input_shape):
     model.add(Dropout(0.4))
     model.add(TimeDistributed(Dense(512, activation='relu')))
     model.add(Dropout(0.4))
-
     model.add(TimeDistributed(Dense(40, activation='softmax')))
     model.summary()
     return model
@@ -139,11 +137,12 @@ def train(data_dir,output_file):
     batchSize = 40
     epoch = 100
     try:
-        model.fit(X_train, y_train,
+        hist = model.fit(X_train, y_train,
         validation_data=(X_valid, y_valid), 
         batch_size = batchSize,
         epochs = epoch,
         callbacks=[earlystopping,checkpoint]) 
+        print(hist.history)
     except KeyboardInterrupt:
         print("\nW: interrupt received, stopping…")
     finally:
@@ -185,7 +184,7 @@ def getSampleTestData():
 def test(data_dir, output_file):
     X_test, X_test_lens, labelIdxList, labelList = loadTestData(data_dir)  
     # single model test
-    model = load_model('./models/cnn_model7best.h5')  
+    model = load_model('./models/cnn_model3best.h5')  
     model.summary()  
     X_predict = []
     result = model.predict_classes(X_test)
