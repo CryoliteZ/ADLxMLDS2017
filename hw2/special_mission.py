@@ -112,4 +112,4 @@ with open(output_file, 'w') as file:
             if len(c) > 0:
                 decode_str += c + ' '
         print(X_test_filename[idx] + ' > ' + decode_str)
-        file.write(X_test_filename[idx] + ',' + decode_str + '\n')
+        file.write(X_test_filename[idx] + ',' + decode_str[:-1] + '\n')
