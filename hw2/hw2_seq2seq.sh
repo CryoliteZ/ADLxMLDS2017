@@ -1,2 +1,2 @@
 #!/bin/sh
-python seq2seq.py $1 $2 $3
+python model_seq2seq.py $1 $2 $3
