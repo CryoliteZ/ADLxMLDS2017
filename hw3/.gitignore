@@ -1,0 +1,13 @@
+*.
+.vscode/*
+agent_dir/agent.py
+backup
+imgs
+model_dqn
+model_pg
+atari_wrapper.py
+environment.py
+main.py
+*.odt
+*.ipynb
+test.py
