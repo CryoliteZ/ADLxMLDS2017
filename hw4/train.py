@@ -22,8 +22,7 @@ from collections import deque
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 import scipy.misc
-
-
+from keras.utils import to_categorical
 
 
 
@@ -79,7 +78,11 @@ def tag_preprocess(data_path):
                 y_index.append(i)
             
         y_eyes = np.array(y_eyes)
+        
+            
+        # y_eyes = to_categorical(y_eyes)
         y_hairs = np.array(y_hairs)
+        # y_hairs = to_categorical(y_hairs)
         y_index = np.array(y_index)
         # print(y_hairs.shape)
         # print(y_eyes.shape)
@@ -171,13 +174,13 @@ def build_generator():
     eyes_class = Input(shape=(1,), dtype='int32')
     hairs_class = Input(shape=(1,), dtype='int32')
     # 10 classes in MNIST
-    eyes = Flatten()(Embedding(12, int(latent_size/2),  init='glorot_normal')(eyes_class))
-    hairs = Flatten()(Embedding(12, int(latent_size/2),  init='glorot_normal')(hairs_class))
-    concat_style = merge([eyes, hairs], name='concat_style', mode='concat')
+    eyes = Flatten()(Embedding(num_class_eyes, int(latent_size/2),  init='glorot_normal')(eyes_class))
+    hairs = Flatten()(Embedding(num_class_hairs, int(latent_size/2),  init='glorot_normal')(hairs_class))
+    concat_style = merge([hairs, eyes], name='concat_style', mode='concat')
     h = merge([latent, concat_style], mode='mul')
 
     fake_image = model(h)
-    m = Model(input=[latent, eyes_class, hairs_class], output=fake_image)
+    m = Model(input=[latent, hairs_class, eyes_class], output=fake_image)
     
     m.summary()
     return m
@@ -223,8 +226,8 @@ def build_discriminator(image_shape=(64,64,3), num_class = 12):
     features = discriminator_model(dis_input)
 
     validity = Dense(1, activation="sigmoid")(features)
-    label_hair = Dense(num_class, activation="softmax")(features)
-    label_eyes = Dense(num_class, activation="softmax")(features)
+    label_hair = Dense(num_class_hairs, activation="softmax")(features)
+    label_eyes = Dense(num_class_eyes, activation="softmax")(features)
     m = Model(dis_input, [validity, label_hair, label_eyes])
     m.summary()
     return m
@@ -274,26 +277,31 @@ def save_img_batch(img_batch,img_save_dir):
         plt.axis('off')
         fig.axes.get_xaxis().set_visible(False)
         fig.axes.get_yaxis().set_visible(False)
-    for i in range(0,5):
-        img = img_batch[i]
-        img = denorm_img(img)
-        scipy.misc.imsave(os.path.join('img', str(i) + '.png'), img)
+    # for i in range(0,5):
+    #     img = img_batch[i]
+    #     img = denorm_img(img)
+    #     scipy.misc.imsave(os.path.join('img', str(i) + '.png'), img)
     plt.tight_layout()
     plt.savefig(img_save_dir,bbox_inches='tight',pad_inches=0)
     # plt.show()
     
+model_id = sys.argv[1]
+if not (os.path.exists("model/" + model_id)):
+    os.makedirs("model/" + model_id)
 
+model_dir = os.path.join('model', model_id)
 
-np.random.seed(42)
-num_steps = 10000
+# np.random.seed(42)
+num_steps = 100000
 latent_size = 100
-num_class = 12
+num_class_hairs = 12
+num_class_eyes = 11
 batch_size = 64
-half_batch = 32
+half_batch = 64
 image_shape = (64,64,3)
-img_save_dir = 'img'
-save_model_dir = 'model'
-log_dir = 'log'
+img_save_dir = model_dir
+save_model_dir = model_dir
+log_dir = model_dir
 
 
 
@@ -302,6 +310,7 @@ y_hairs, y_eyes, y_index = tag_preprocess('data')
 # face_preprocess('data', y_index)
 X_data = load_data('data', y_hairs, y_eyes, y_index )
 print('X_data: {}, y_hairs: {},  y_eyes"{}'.format(X_data.shape, y_hairs.shape,y_eyes.shape ))
+print(y_hairs[0], y_eyes[0], y_index[0])
 
 generator = build_generator()
 gen_opt = Adam(lr=0.00015, beta_1=0.5)
@@ -309,13 +318,13 @@ generator.compile(loss='binary_crossentropy', optimizer=gen_opt, metrics=['accur
 
 
 dis_opt = Adam(lr=0.0002, beta_1=0.5)
-losses = ['binary_crossentropy', 'sparse_categorical_crossentropy', 'sparse_categorical_crossentropy']
+losses = ['binary_crossentropy', 'categorical_crossentropy', 'categorical_crossentropy']
 discriminator = build_discriminator()
-discriminator.trainable = False
 discriminator.compile(loss=losses, optimizer=dis_opt, metrics=['accuracy'])
+discriminator.trainable = False
 
-plot_model(generator, to_file='generator_new.png', show_shapes=True)
-plot_model(discriminator, to_file='discriminator_new.png', show_shapes=True)
+# plot_model(generator, to_file='generator_new.png', show_shapes=True)
+# plot_model(discriminator, to_file='discriminator_new.png', show_shapes=True)
 
 latent_size = 100
 opt = Adam(lr=0.00015, beta_1=0.5) #same as gen
@@ -326,7 +335,6 @@ eyes_inp = Input(shape=(1,), dtype='int32')
 GAN_inp = generator([gen_inp,hairs_inp,eyes_inp])
 GAN_opt = discriminator(GAN_inp)
 gan = Model(input = [gen_inp,hairs_inp,eyes_inp], output = GAN_opt)
-losses = ['binary_crossentropy', 'sparse_categorical_crossentropy', 'sparse_categorical_crossentropy']
 gan.compile(loss = losses, optimizer = opt, metrics=['accuracy'])
 gan.summary()
 
@@ -342,15 +350,23 @@ for step in range(num_steps):
     # ---------------------
     #  Train Discriminator
     # ---------------------
-    real_data_X, real_label_hair,  real_label_eye = sample_from_dataset(half_batch, image_shape, X_data, y_hairs, y_eyes)
+    real_data_X, real_label_hairs,  real_label_eyes = sample_from_dataset(half_batch, image_shape, X_data, y_hairs, y_eyes)
+
+    # to_categorical
+    real_label_hairs_cat = to_categorical(real_label_hairs, num_classes = num_class_hairs )
+    real_label_eyes_cat = to_categorical(real_label_eyes, num_classes = num_class_eyes )
 
     noise = gen_noise(half_batch,latent_size)
-    sampled_hairs_label = np.random.randint(0, num_class, half_batch).reshape(-1, 1)
-    sampled_eyes_label = np.random.randint(0, num_class, half_batch).reshape(-1, 1)
 
-    fake_data_X = generator.predict([noise, sampled_hairs_label, sampled_eyes_label])
+    # sampled
+    sampled_label_hairs = np.random.randint(0, num_class_hairs, half_batch).reshape(-1, 1)
+    sampled_label_eyes = np.random.randint(0, num_class_eyes, half_batch).reshape(-1, 1)
+    sampled_label_hairs_cat = to_categorical(sampled_label_hairs, num_classes = num_class_hairs )
+    sampled_label_eyes_cat = to_categorical(sampled_label_eyes, num_classes = num_class_eyes )
+
+    fake_data_X = generator.predict([noise, sampled_label_hairs, sampled_label_eyes])
     
-    if (tot_step % 500) == 0:
+    if (tot_step % 100) == 0:
         step_num = str(tot_step).zfill(4)
         save_img_batch(fake_data_X,os.path.join(img_save_dir,step_num+"_image.png"))
 
@@ -364,8 +380,8 @@ for step in range(num_steps):
     # labels
     # real_label_hair
     # real_label_eye
-    # fake_label_hair = (num_class+1) * np.ones(half_batch).reshape(-1, 1)
-    # fake_label_eye = (num_class+1) * np.ones(half_batch).reshape(-1, 1)
+
+   
     data_Y = np.concatenate((real_data_Y,fake_data_Y))
     
     
@@ -373,8 +389,8 @@ for step in range(num_steps):
     discriminator.trainable = True
     generator.trainable = False
     
-    dis_metrics_real = discriminator.train_on_batch(real_data_X,[real_data_Y,real_label_hair, real_label_eye ])   #training seperately on real
-    dis_metrics_fake = discriminator.train_on_batch(fake_data_X,[fake_data_Y, sampled_hairs_label,sampled_eyes_label ])   #training seperately on fake
+    dis_metrics_real = discriminator.train_on_batch(real_data_X,[real_data_Y,real_label_hairs_cat, real_label_eyes_cat ])   #training seperately on real
+    dis_metrics_fake = discriminator.train_on_batch(fake_data_X,[fake_data_Y, sampled_label_hairs_cat,sampled_label_eyes_cat ])   #training seperately on fake
     
     
     
@@ -387,11 +403,14 @@ for step in range(num_steps):
 
     generator.trainable = True
     noise = gen_noise(half_batch,latent_size)
-    sampled_hairs_labels = np.random.randint(0, num_class, half_batch).reshape(-1, 1)
-    sampled_eyes_labels = np.random.randint(0, num_class, half_batch).reshape(-1, 1)
+    sampled_label_hairs = np.random.randint(0, num_class_hairs, half_batch).reshape(-1, 1)
+    sampled_label_eyes = np.random.randint(0, num_class_eyes, half_batch).reshape(-1, 1)
 
-    GAN_X = [noise, sampled_hairs_labels, sampled_eyes_labels]
-    GAN_Y = [real_data_Y, sampled_hairs_labels, sampled_eyes_labels]
+    sampled_label_hairs_cat = to_categorical(sampled_label_hairs, num_classes = num_class_hairs )
+    sampled_label_eyes_cat = to_categorical(sampled_label_eyes, num_classes = num_class_eyes )
+
+    GAN_X = [noise, sampled_label_hairs, sampled_label_eyes]
+    GAN_Y = [real_data_Y, sampled_label_hairs_cat, sampled_label_eyes_cat]
     
     discriminator.trainable = False
     
