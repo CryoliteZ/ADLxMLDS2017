@@ -297,7 +297,7 @@ latent_size = 100
 num_class_hairs = 12
 num_class_eyes = 11
 batch_size = 64
-half_batch = 64
+half_batch = 256
 image_shape = (64,64,3)
 img_save_dir = model_dir
 save_model_dir = model_dir
@@ -432,7 +432,7 @@ for step in range(num_steps):
     # diff_time = int(end_time - step_begin_time)
     # print("Step %d completed. Time took: %s secs." % (tot_step, diff_time))
     
-    if ((tot_step+1) % 500) == 0:
+    if ((tot_step+1) % 500) == 0 and  (tot_step+1) >= 3500:
         print("-----------------------------------------------------------------")
         print("Average Disc_fake loss: %f" % (np.mean(avg_disc_fake_loss)))    
         print("Average Disc_real loss: %f" % (np.mean(avg_disc_real_loss)))    
@@ -440,6 +440,6 @@ for step in range(num_steps):
         print("-----------------------------------------------------------------")
         discriminator.trainable = True
         generator.trainable = True
-        generator.save(os.path.join(save_model_dir,str(tot_step)+"_GENERATOR_weights_and_arch.hdf5"))
-discriminator.save(os.path.join(save_model_dir,str(tot_step)+"_DISCRIMINATOR_weights_and_arch.hdf5"))
+        generator.save(os.path.join(save_model_dir,str(tot_step+1)+"_GENERATOR_weights_and_arch.hdf5"))
+discriminator.save(os.path.join(save_model_dir,str(tot_step+1)+"_DISCRIMINATOR_weights_and_arch.hdf5"))
 
