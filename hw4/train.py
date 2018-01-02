@@ -2,8 +2,6 @@ import sys,os,csv, random
 import skimage, skimage.io, skimage.transform
 import numpy as np
 from sklearn.externals import joblib
-from keras.utils.vis_utils import plot_model
-import skimage, skimage.io, skimage.transform
 from keras.layers import Input, Dense, Reshape, Flatten, Dropout, multiply, Activation
 from keras.layers import BatchNormalization, Activation, Embedding, ZeroPadding2D
 from keras.layers import Conv2D, Conv2DTranspose, Dropout, UpSampling2D, MaxPooling2D
@@ -14,33 +12,13 @@ from keras.optimizers import SGD, Adam, RMSprop
 from sklearn.utils import shuffle
 import time
 import scipy
-from PIL import Image
 from keras.models import load_model
 import keras.backend as K
 from scipy.interpolate import spline
 from collections import deque
-import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridspec
 import scipy.misc
 from keras.utils import to_categorical
 
-
-
-
-def face_preprocess(data_path, y_index):   
-    faces_dir = os.path.join(data_path,'faces')
-    X_data = []
-    for idx in y_index:
-        filename = os.path.join(faces_dir, (str(idx) + '.jpg'))
-        img = skimage.io.imread(filename)
-        img_resized = skimage.transform.resize(img, (64,64))
-        x = np.array(img_resized)
-        X_data.append(np.array(img_resized))
-    X_data = np.array(X_data)
-    print(X_data.shape)
-    with open(os.path.join(data_path,'X_data_filter.jlib' ),'wb') as file:
-        joblib.dump(X_data, file)
-    
     
 def tag_preprocess(data_path):
 #     HAIRS = ['hair', 'hairs', 'ponytail', 'tail', 'tails']
@@ -66,20 +44,14 @@ def tag_preprocess(data_path):
                 feat = feat[:feat.index(':')]
                 if(feat in HAIRS):
                     y_hair.append(HAIRS.index(feat))
-                    flag_hair = True
                 if(feat in EYES):
                     y_eye.append(EYES.index(feat))
-                    flag_eyes = True
-            if(flag_hair and flag_eyes):
-                hair = random.choice(y_hair)
-                eye = random.choice(y_eye)
-                y_hairs.append(hair)
-                y_eyes.append(eye)
+            if(len(y_hair) == 1 and len(y_eye) == 1):
+                y_hairs.append(y_hair)
+                y_eyes.append(y_eye)
                 y_index.append(i)
             
         y_eyes = np.array(y_eyes)
-        
-            
         # y_eyes = to_categorical(y_eyes)
         y_hairs = np.array(y_hairs)
         # y_hairs = to_categorical(y_hairs)
@@ -88,21 +60,12 @@ def tag_preprocess(data_path):
         # print(y_eyes.shape)
         # print(y_index.shape)
         return y_hairs, y_eyes, y_index
-        '''
-        tokenizer = Tokenizer()
-        tokenizer.fit_on_texts(words)  
-        word_index = tokenizer.word_index
-        train_sequences = tokenizer.texts_to_sequences(y_tags)
-        print(word_index)
-        print(train_sequences)
-        '''
-    pass
+
 
 def load_data(data_path, y_hairs, y_eyes, y_index):
-    with open(os.path.join(data_path, 'X_data_filter.jlib'), 'rb') as file:
+    with open(os.path.join(data_path, 'X_data_norepeat.jlib'), 'rb') as file:
         X_data = joblib.load(file)
         return X_data
-
               
 
 
@@ -119,9 +82,9 @@ def build_generator():
     # con_input = Input(shape = one_hot_vector_shape)
     # inputs = merge([gen_input, con_input], name='concat_input', mode='concat')
     latent_size = 100
-    model = Sequential()
+    model = Sequential(name = 'generator_model')
     
-    model.add(Reshape((1, 1, 100), input_shape=(latent_size,)))
+    model.add(Reshape((1, 1, -1), input_shape=(latent_size+16,)))
     model.add( Conv2DTranspose(filters = 512, kernel_size = (4,4), strides = (1,1), padding = "valid", data_format = "channels_last", kernel_initializer = kernel_init, ))
     model.add( BatchNormalization(momentum = 0.5))
     model.add( LeakyReLU(0.2))
@@ -160,6 +123,7 @@ def build_generator():
     #model.add( Conv2D(filters = 3, kernel_size = (4,4), strides = (1,1), padding = "same", data_format = "channels_last", kernel_initializer = kernel_init))
     model.add( Conv2DTranspose(filters = 3, kernel_size = (4,4), strides = (2,2), padding = "same", data_format = "channels_last", kernel_initializer = kernel_init))
     model.add( Activation('tanh'))
+    # plot_model(model, to_file='generator_model.png', show_shapes=True)
 #     model.summary()
         
     # gen_opt = Adam(lr=0.00015, beta_1=0.5)
@@ -174,10 +138,10 @@ def build_generator():
     eyes_class = Input(shape=(1,), dtype='int32')
     hairs_class = Input(shape=(1,), dtype='int32')
     # 10 classes in MNIST
-    eyes = Flatten()(Embedding(num_class_eyes, int(latent_size/2),  init='glorot_normal')(eyes_class))
-    hairs = Flatten()(Embedding(num_class_hairs, int(latent_size/2),  init='glorot_normal')(hairs_class))
-    concat_style = merge([hairs, eyes], name='concat_style', mode='concat')
-    h = merge([latent, concat_style], mode='mul')
+    hairs = Flatten()(Embedding(num_class_hairs, 8,  init='glorot_normal')(hairs_class))    
+    eyes = Flatten()(Embedding(num_class_eyes, 8,  init='glorot_normal')(eyes_class))
+    # concat_style = merge([hairs, eyes], name='concat_style', mode='concat')
+    h = merge([latent, hairs, eyes], mode='concat')
 
     fake_image = model(h)
     m = Model(input=[latent, hairs_class, eyes_class], output=fake_image)
@@ -192,7 +156,7 @@ def build_discriminator(image_shape=(64,64,3), num_class = 12):
     #kernel_init = RandomNormal(mean=0.0, stddev=0.01)
     kernel_init = 'glorot_uniform'
     
-    discriminator_model = Sequential()
+    discriminator_model = Sequential(name="discriminator_model")
     discriminator_model.add( Conv2D(filters = 64, kernel_size = (4,4), strides = (2,2), padding = "same", data_format = "channels_last", kernel_initializer = kernel_init, input_shape=image_shape))
     discriminator_model.add( LeakyReLU(0.2))
     #discriminator_model.add( MaxPooling2D(pool_size=(2, 2)))
@@ -216,6 +180,7 @@ def build_discriminator(image_shape=(64,64,3), num_class = 12):
     #discriminator_model.add( MaxPooling2D(pool_size=(2, 2)))
 
     discriminator_model.add( Flatten())
+    # plot_model(discriminator_model, to_file='discriminator_model.png', show_shapes=True)
 
     #discriminator_model.add( MinibatchDiscrimination(100,5))
 #     discriminator_model.add( Dense(1))
@@ -260,50 +225,24 @@ def sample_from_dataset(batch_size, image_shape, X_data, y_hairs, y_eyes):
     y_hair_label = np.array(y_hair_label)
     y_eyes_label = np.array(y_eyes_label)
     return sample, y_hair_label, y_eyes_label
-
-def save_img_batch(img_batch,img_save_dir):
-    plt.figure(figsize=(4,4))
-    gs1 = gridspec.GridSpec(4, 4)
-    gs1.update(wspace=0, hspace=0)
-    rand_indices = np.random.choice(img_batch.shape[0],16,replace=False)
-    #print(rand_indices)
-    for i in range(16):
-        #plt.subplot(4, 4, i+1)
-        ax1 = plt.subplot(gs1[i])
-        ax1.set_aspect('equal')
-        rand_index = rand_indices[i]
-        image = img_batch[rand_index, :,:,:]
-        fig = plt.imshow(denorm_img(image))
-        plt.axis('off')
-        fig.axes.get_xaxis().set_visible(False)
-        fig.axes.get_yaxis().set_visible(False)
-    # for i in range(0,5):
-    #     img = img_batch[i]
-    #     img = denorm_img(img)
-    #     scipy.misc.imsave(os.path.join('img', str(i) + '.png'), img)
-    plt.tight_layout()
-    plt.savefig(img_save_dir,bbox_inches='tight',pad_inches=0)
-    # plt.show()
-    
+ 
 model_id = sys.argv[1]
 if not (os.path.exists("model/" + model_id)):
     os.makedirs("model/" + model_id)
 
 model_dir = os.path.join('model', model_id)
 
-# np.random.seed(42)
+np.random.seed(42)
 num_steps = 100000
 latent_size = 100
 num_class_hairs = 12
 num_class_eyes = 11
-batch_size = 64
-half_batch = 256
+batch_size = 128
+half_batch = 64
 image_shape = (64,64,3)
 img_save_dir = model_dir
 save_model_dir = model_dir
 log_dir = model_dir
-
-
 
 
 y_hairs, y_eyes, y_index = tag_preprocess('data')
@@ -313,14 +252,19 @@ print('X_data: {}, y_hairs: {},  y_eyes"{}'.format(X_data.shape, y_hairs.shape,y
 print(y_hairs[0], y_eyes[0], y_index[0])
 
 generator = build_generator()
+# generator.load_weights('./model/11/GENERATOR_weights_and_arch.hdf5')
 gen_opt = Adam(lr=0.00015, beta_1=0.5)
 generator.compile(loss='binary_crossentropy', optimizer=gen_opt, metrics=['accuracy'])
 
 
 dis_opt = Adam(lr=0.0002, beta_1=0.5)
 losses = ['binary_crossentropy', 'categorical_crossentropy', 'categorical_crossentropy']
+alpha = K.variable(1.4)
+beta = K.variable(0.8)
+gamma = K.variable(0.8)
 discriminator = build_discriminator()
-discriminator.compile(loss=losses, optimizer=dis_opt, metrics=['accuracy'])
+# discriminator.load_weights('./model/11/DISCRIMINATOR_weights_and_arch.hdf5')
+discriminator.compile(loss=losses, loss_weights=[1.4,0.8, 0.8], optimizer=dis_opt, metrics=['accuracy'])
 discriminator.trainable = False
 
 # plot_model(generator, to_file='generator_new.png', show_shapes=True)
@@ -343,7 +287,7 @@ avg_disc_fake_loss = deque([0], maxlen=250)
 avg_disc_real_loss = deque([0], maxlen=250)
 avg_GAN_loss = deque([0], maxlen=250)
 
-for step in range(num_steps): 
+for step in range(0, num_steps): 
     tot_step = step
 
     step_begin_time = time.time() 
@@ -366,9 +310,9 @@ for step in range(num_steps):
 
     fake_data_X = generator.predict([noise, sampled_label_hairs, sampled_label_eyes])
     
-    if (tot_step % 100) == 0:
-        step_num = str(tot_step).zfill(4)
-        save_img_batch(fake_data_X,os.path.join(img_save_dir,step_num+"_image.png"))
+    # if (tot_step % 100) == 0:
+    #     step_num = str(tot_step).zfill(4)
+    #     save_images_hair(generator, latent_size, os.path.join(img_save_dir,step_num+"_image.png"))
 
     
     data_X = np.concatenate([real_data_X,fake_data_X])
@@ -381,11 +325,11 @@ for step in range(num_steps):
     # real_label_hair
     # real_label_eye
 
-   
+
     data_Y = np.concatenate((real_data_Y,fake_data_Y))
     
     
- 
+
     discriminator.trainable = True
     generator.trainable = False
     
@@ -402,20 +346,21 @@ for step in range(num_steps):
     # ---------------------
 
     generator.trainable = True
-    noise = gen_noise(half_batch,latent_size)
-    sampled_label_hairs = np.random.randint(0, num_class_hairs, half_batch).reshape(-1, 1)
-    sampled_label_eyes = np.random.randint(0, num_class_eyes, half_batch).reshape(-1, 1)
+    noise = gen_noise(batch_size,latent_size)
+    sampled_label_hairs = np.random.randint(0, num_class_hairs, batch_size).reshape(-1, 1)
+    sampled_label_eyes = np.random.randint(0, num_class_eyes, batch_size).reshape(-1, 1)
 
     sampled_label_hairs_cat = to_categorical(sampled_label_hairs, num_classes = num_class_hairs )
     sampled_label_eyes_cat = to_categorical(sampled_label_eyes, num_classes = num_class_eyes )
-
+    real_data_Y = np.ones(batch_size) - np.random.random_sample(batch_size)*0.2
+    
     GAN_X = [noise, sampled_label_hairs, sampled_label_eyes]
     GAN_Y = [real_data_Y, sampled_label_hairs_cat, sampled_label_eyes_cat]
     
     discriminator.trainable = False
     
     gan_metrics = gan.train_on_batch(GAN_X,GAN_Y)
-   
+
     
     text_file = open(os.path.join(log_dir,"training_log.txt"), "a")
     if(tot_step % 100 == 0):
@@ -432,8 +377,8 @@ for step in range(num_steps):
     # diff_time = int(end_time - step_begin_time)
     # print("Step %d completed. Time took: %s secs." % (tot_step, diff_time))
     
-    if ((tot_step+1) % 500) == 0 and  (tot_step+1) >= 3500:
-        print("-----------------------------------------------------------------")
+    if ((tot_step+1) % 100) == 0 and  (tot_step+1) >= 8000:
+        print("--------------------------------s---------------------------------")
         print("Average Disc_fake loss: %f" % (np.mean(avg_disc_fake_loss)))    
         print("Average Disc_real loss: %f" % (np.mean(avg_disc_real_loss)))    
         print("Average GAN loss: %f" % (np.mean(avg_GAN_loss)))
@@ -441,5 +386,7 @@ for step in range(num_steps):
         discriminator.trainable = True
         generator.trainable = True
         generator.save(os.path.join(save_model_dir,str(tot_step+1)+"_GENERATOR_weights_and_arch.hdf5"))
-discriminator.save(os.path.join(save_model_dir,str(tot_step+1)+"_DISCRIMINATOR_weights_and_arch.hdf5"))
+        # discriminator.save(os.path.join(save_model_dir,str(tot_step+1)+"_DISCRIMINATOR_weights_and_arch.hdf5"))
 
+    # generator.save(os.path.join(save_model_dir,"GENERATOR_weights_and_arch.hdf5"))
+    # discriminator.save(os.path.join(save_model_dir,"DISCRIMINATOR_weights_and_arch.hdf5"))
