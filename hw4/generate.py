@@ -70,7 +70,7 @@ def generate_images(generator, latent_size, hair_color, eyes_color, testing_id):
     fake_data_X = generator.predict([noise, hairs, eyes])
     for i in range(5):
         img = denorm_img(fake_data_X[i])
-        scipy.misc.imsave(os.path.join('samples','sample_' +str(testing_id) +'_' + str(i+1) + '.jpg'), img)
+        scipy.misc.imsave(os.path.join('samples','sample_' +str(testing_id) +'_' + str(i+1)  +'.jpg'), img)
     
         
     # idx = np.random.randint(1, size = 16)[0]
@@ -102,14 +102,14 @@ text_file = sys.argv[1]
 HAIRS = [ 'orange hair', 'white hair', 'aqua hair', 'gray hair','green hair', 'red hair', 'purple hair', 'pink hair','blue hair', 'black hair', 'brown hair', 'blonde hair']
 EYES = [  'gray eyes', 'black eyes', 'orange eyes','pink eyes', 'yellow eyes', 'aqua eyes', 'purple eyes','green eyes', 'brown eyes', 'red eyes', 'blue eyes']
 
-np.random.seed(42)
 latent_size = 100
 num_class_hairs = 12
 num_class_eyes = 11
 color_mapping, gen_idx = generator_mapping()
 generators = load_generators(gen_idx)
 
-
+seed = 7122
+np.random.seed(seed)
 with open(text_file, 'r') as f:
     lines = csv.reader(f, delimiter=',')
     for line in lines:

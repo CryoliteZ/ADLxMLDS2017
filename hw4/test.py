@@ -278,11 +278,11 @@ generator.load_weights('./model/' + model_id+ '/' + str(time_step) + '_GENERATOR
 if not (os.path.exists(os.path.join("model/",  model_id, 'img'+str(time_step)))):
     os.makedirs(os.path.join("model/",  model_id, 'img'+str(time_step)))
 save_dir = os.path.join("model/",  model_id, 'img'+str(time_step)) 
-# for i in range(num_class_hairs):
-#     for j in range(num_class_eyes):
-#         generate_images(generator, latent_size, i, j, save_dir)
 for i in range(num_class_hairs):
-    generate_images_hair(generator, latent_size, i, save_dir)
+    for j in range(num_class_eyes):
+        generate_images(generator, latent_size, i, j, save_dir)
+# for i in range(num_class_hairs):
+#     generate_images_hair(generator, latent_size, i, save_dir)
 exit(1)
 
 # iterate timesteps
